@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudBets — Análisis Estadístico de Apuestas</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo-tag">
+      <span class="logo-dot"></span>
+      Computación en la Nube · Análisis Estadístico
+    </div>
+    <h1>CLOUD<span>BETS</span></h1>
+    <p class="subtitle">Recomendaciones de apuesta basadas en datos reales de los últimos 10 partidos</p>
+  </header>
+
+  <!-- SEARCH -->
+<div class="search-panel">
+  <div class="panel-title">PARTIDOS DE HOY</div>
+
+  <div id="matches-list" style="display:flex; flex-direction:column; gap:12px;">
+    <!-- partidos dinámicos -->
+  </div>
+</div>
+
+  <!-- MATCH HEADER -->
+  <div class="match-header" id="match-header">
+    <div class="vs-row">
+      <div class="team-name" id="home-name">—</div>
+      <div class="vs-badge">VS</div>
+      <div class="team-name" id="away-name">—</div>
+    </div>
+    <div class="match-meta" id="match-meta">—</div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-section" id="stats-section">
+    <div class="section-label">Promedios · Últimos 10 partidos</div>
+    <div class="stats-grid" id="stats-grid"></div>
+  </div>
+
+  <!-- LOADING (oculto por defecto, se muestra mientras carga el análisis) -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">CARGANDO...</div>
+  </div>
+
+  <!-- ERROR (oculto por defecto, se muestra si hay un fallo) -->
+  <div class="error-box" id="error-box"></div>
+
+  <!-- RECOMMENDATIONS -->
+  <div class="recs-section" id="recs-section">
+    <div class="section-label" style="margin-bottom:20px;">Apuestas recomendadas · Betano</div>
+    <div class="recs-grid" id="recs-grid"></div>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    CloudBets · Computación en la Nube ·
+    Datos: <a href="https://www.api-football.com" target="_blank">API-Football</a> ·
+    Cuotas: <a href="https://betano.com.ar" target="_blank">Betano Argentina</a>
+  </div>
+</footer>
+
+<script>
+  const API_BASE = "http://localhost:8000";
+
+  const STAT_META = [
+    { key: "corners",       label: "Corners",         icon: "⛳" },
+    { key: "yellow_cards",  label: "Amarillas",        icon: "🟨" },
+    { key: "red_cards",     label: "Rojas",            icon: "🟥" },
+    { key: "offsides",      label: "Offsides",         icon: "🚩" },
+    { key: "goals_scored",  label: "Goles a favor",    icon: "⚽" },
+    { key: "goals_conceded",label: "Goles en contra",  icon: "🥅" },
+    { key: "shots_on_goal", label: "Tiros al arco",    icon: "🎯" },
+    { key: "fouls",         label: "Faltas",           icon: "💥" },
+  ];
+
+  function showError(msg) {
+  const el = document.getElementById("error-box");
+  if (!el) return;
+
+  el.textContent = "❌ " + msg;
+  el.classList.add("visible");
+}
+
+  function clearError() {
+  const el = document.getElementById("error-box");
+  if (el) el.classList.remove("visible");
+}
+
+  function setLoading(text) {
+    document.getElementById("loading").classList.add("visible");
+    document.getElementById("loading-text").textContent = text;
+  }
+
+  function stopLoading() {
+    document.getElementById("loading").classList.remove("visible");
+  }
+
+  async function loadMatches() {
+  try {
+    const res = await fetch(`${API_BASE}/matches/today`);
+    if (!res.ok) throw new Error("No se pudieron cargar los partidos");
+
+    const matches = await res.json();
+
+    const container = document.getElementById("matches-list");
+    container.innerHTML = "";
+
+    let activeMatchId = null;
+
+    matches.forEach(match => {
+      const el = document.createElement("div");
+
+      el.style.background = "var(--surface2)";
+      el.style.border = "1px solid var(--border)";
+      el.style.borderRadius = "10px";
+      el.style.padding = "14px 18px";
+      el.style.cursor = "pointer";
+      el.style.display = "flex";
+      el.style.justifyContent = "space-between";
+      el.style.alignItems = "center";
+      el.style.transition = "0.2s";
+
+      el.onmouseenter = () => {
+        el.style.borderColor = "var(--accent)";
+      };
+
+      el.onmouseleave = () => {
+        el.style.borderColor = "var(--border)";
+      };
+
+      el.innerHTML = `
+        <div style="display:flex; flex-direction:column;">
+          <span style="font-family:var(--font-display); font-size:20px;">
+            ${match.home} vs ${match.away}
+          </span>
+          <span style="font-size:11px; color:var(--muted); font-family:var(--font-mono);">
+            ${match.league} · ${match.time}
+          </span>
+        </div>
+
+        <button class="btn-analyze">VER CUOTAS</button>
+      `;
+
+      el.querySelector("button").onclick = (e) => {
+        e.stopPropagation();
+        runAnalysisByFixture(match.id);
+      };
+
+      el.onclick = () => {
+  activeMatchId = match.id;
+
+  // reset estilos
+  document.querySelectorAll("#matches-list > div").forEach(item => {
+    item.style.borderColor = "var(--border)";
+    item.style.background = "var(--surface2)";
+  });
+
+  // marcar activo
+  el.style.borderColor = "var(--accent)";
+  el.style.background = "rgba(0,229,255,0.08)";
+
+  runAnalysisByFixture(match.id);
+};
+
+      container.appendChild(el);
+    });
+
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+async function runAnalysisByFixture(fixtureId) {
+  clearError();
+  setLoading("ANALIZANDO PARTIDO...");
+
+  try {
+    const res = await fetch(`${API_BASE}/analyze?fixture_id=${fixtureId}`);
+    if (!res.ok) throw new Error(await res.text());
+
+    const data = await res.json();
+    renderResults(data);
+    document.getElementById("match-header").scrollIntoView({
+  behavior: "smooth"
+});
+
+  } catch (e) {
+    stopLoading();
+    showError(e.message);
+  }
+}
+
+  async function runDemo() {
+    clearError();
+    setLoading("CARGANDO DEMO — BOCA VS RIVER...");
+    try {
+      const res = await fetch(`${API_BASE}/analyze/demo`);
+      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+      const data = await res.json();
+      renderResults(data);
+    } catch (e) {
+      stopLoading();
+      showError("No se pudo conectar al backend. ¿Está corriendo en localhost:8000? — " + e.message);
+    }
+  }
+
+  async function runAnalysis() {
+    const home = document.getElementById("home-input").value.trim();
+    const away = document.getElementById("away-input").value.trim();
+
+    if (!home || !away) {
+      showError("Ingresá ambos nombres de equipo para analizar.");
+      return;
+    }
+
+    clearError();
+    setLoading("BUSCANDO EQUIPOS...");
+
+    try {
+      // Buscar IDs de los equipos
+      const [homeRes, awayRes] = await Promise.all([
+        fetch(`${API_BASE}/search/team?name=${encodeURIComponent(home)}`),
+        fetch(`${API_BASE}/search/team?name=${encodeURIComponent(away)}`)
+      ]);
+
+      if (!homeRes.ok || !awayRes.ok) throw new Error("Error buscando equipos");
+
+      const homeTeams = await homeRes.json();
+      const awayTeams = await awayRes.json();
+
+      if (!homeTeams.length) throw new Error(`No se encontró el equipo: ${home}`);
+      if (!awayTeams.length) throw new Error(`No se encontró el equipo: ${away}`);
+
+      const homeId = homeTeams[0].id;
+      const awayId = awayTeams[0].id;
+
+      document.getElementById("loading-text").textContent = "RECOLECTANDO ESTADÍSTICAS...";
+
+      const res = await fetch(`${API_BASE}/analyze?home_team_id=${homeId}&away_team_id=${awayId}`);
+      if (!res.ok) throw new Error(`Error ${res.status}: ${await res.text()}`);
+
+      const data = await res.json();
+      renderResults(data);
+
+    } catch (e) {
+      stopLoading();
+      showError(e.message);
+    }
+  }
+
+  function renderResults(data) {
+    stopLoading();
+
+    const { match, home_stats, away_stats, recommendations } = data;
+
+    // Match header
+    document.getElementById("home-name").textContent = match.home;
+    document.getElementById("away-name").textContent = match.away;
+    document.getElementById("match-meta").textContent =
+      `Liga ID ${match.league_id} · Temporada ${match.season} · ${match.games_analyzed} partidos analizados` +
+      (data.demo ? " · MODO DEMO" : "");
+    document.getElementById("match-header").classList.add("visible", "animate-in");
+
+    // Stats
+    const grid = document.getElementById("stats-grid");
+    grid.innerHTML = "";
+    STAT_META.forEach(({ key, label, icon }) => {
+      const hv = home_stats[key] ?? 0;
+      const av = away_stats[key] ?? 0;
+      const combined = Math.round((hv + av) * 10) / 10;
+      const maxPossible = Math.max(combined, 12);
+      const pct = Math.min(100, (combined / maxPossible) * 100);
+
+      grid.innerHTML += `
+        <div class="stat-card">
+          <div class="stat-label">${icon} ${label}</div>
+          <div class="stat-values">
+            <div>
+              <div class="stat-val home">${hv}</div>
+              <div class="stat-sublabel">Local</div>
+            </div>
+            <div>
+              <div class="stat-val away">${av}</div>
+              <div class="stat-sublabel">Visita</div>
+            </div>
+            <div>
+              <div class="stat-val combined">${combined}</div>
+              <div class="stat-sublabel">Total</div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-fill" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+    });
+    document.getElementById("stats-section").classList.add("visible", "animate-in");
+
+    // Recommendations
+    const recs = [
+      { data: recommendations.safe,     level: "safe",     label: "🟢 APUESTA SEGURA" },
+      { data: recommendations.risky,    level: "risky",    label: "🟡 MENOS SEGURA" },
+      { data: recommendations.longshot, level: "longshot", label: "🔴 CASI IMPOSIBLE" },
+    ];
+
+    const recsGrid = document.getElementById("recs-grid");
+    recsGrid.innerHTML = "";
+    recs.forEach(({ data: rec, level, label }) => {
+      if (!rec) return;
+      const confPct = Math.round(rec.confidence * 100);
+      recsGrid.innerHTML += `
+        <div class="rec-card ${level} animate-in">
+          <div class="rec-level ${level}">${label}</div>
+          <div class="rec-market">${rec.market}</div>
+          <div class="rec-bet">${rec.bet}</div>
+          <div class="rec-meta">
+            <div class="meta-item">
+              <div class="meta-val ${level === 'safe' ? 'green' : level === 'risky' ? 'yellow' : 'red'}">${confPct}%</div>
+              <div class="meta-label">Confianza</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-val" style="color:var(--gold)">${rec.estimated_odds}</div>
+              <div class="meta-label">Cuota est.</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-val" style="color:var(--muted)">${rec.expected_value}</div>
+              <div class="meta-label">Valor esp.</div>
+            </div>
+          </div>
+          <div class="confidence-bar">
+            <div class="confidence-fill ${level}" style="width:${confPct}%"></div>
+          </div>
+          <div class="rec-description">${rec.description}</div>
+          <div class="betano-tag">📍 Betano: ${rec.betano_market}</div>
+        </div>`;
+    });
+    document.getElementById("recs-section").classList.add("visible", "animate-in");
+  }
+  setTimeout(() => {
+  document.getElementById("stats-section").classList.add("animate-in");
+  document.getElementById("recs-section").classList.add("animate-in");
+}, 100);
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadMatches();
+});
+</script>
+</body>
+</html>
