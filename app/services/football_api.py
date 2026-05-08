@@ -207,3 +207,72 @@ def _get_match_averages(team_id: int, league_id: int, season: int) -> tuple:
         avg(shots_list, 4.0),
         avg(fouls_list, 12.0),
     )
+
+
+# ── Cuotas reales del partido ─────────────────────────────────────────────────
+
+# Bet IDs de api-football para los mercados que nos interesan
+# https://v3.football.api-sports.io/odds/bets
+_BET_LABELS = {
+    "Goals Over/Under": "goals",
+    "Corners Over/Under": "corners",
+    "Cards Over/Under": "yellow_cards",
+    "Both Teams Score": "btts",
+}
+_BOOKMAKER_BETANO = 8   # ID de Betano en api-football
+
+def get_fixture_odds(fixture_id: int) -> dict:
+    """
+    Llama a /odds?fixture=<id>&bookmaker=8 y devuelve un dict normalizado:
+      {
+        "goals_over_2.5":    1.90,
+        "goals_under_2.5":   1.95,
+        "corners_over_9.5":  2.10,
+        "btts_yes":          1.85,
+        ...
+      }
+    Si no hay cuotas disponibles (partido sin mercado abierto), devuelve {}.
+    Costo: 1 llamada.
+    """
+    try:
+        data = _get("odds", {"fixture": fixture_id, "bookmaker": _BOOKMAKER_BETANO})
+    except Exception as e:
+        log.warning(f"No se pudieron obtener cuotas para fixture={fixture_id}: {e}")
+        return {}
+
+    resp = data.get("response", [])
+    if not resp:
+        log.info(f"  Sin cuotas disponibles para fixture={fixture_id}")
+        return {}
+
+    odds_out = {}
+    for bookmaker_block in resp[0].get("bookmakers", []):
+        for bet in bookmaker_block.get("bets", []):
+            name = bet.get("name", "")
+            market_key = _BET_LABELS.get(name)
+            if not market_key:
+                continue
+            for outcome in bet.get("values", []):
+                label = outcome.get("value", "")   # ej: "Over 2.5", "Yes", "No"
+                try:
+                    odd_val = float(outcome.get("odd", 0))
+                except (ValueError, TypeError):
+                    continue
+                if not odd_val:
+                    continue
+
+                # Normalizar la clave
+                low = label.lower()
+                if low.startswith("over"):
+                    line = low.replace("over", "").strip()
+                    odds_out[f"{market_key}_over_{line}"] = odd_val
+                elif low.startswith("under"):
+                    line = low.replace("under", "").strip()
+                    odds_out[f"{market_key}_under_{line}"] = odd_val
+                elif low == "yes":
+                    odds_out[f"{market_key}_yes"] = odd_val
+                elif low == "no":
+                    odds_out[f"{market_key}_no"] = odd_val
+
+    log.info(f"  Cuotas obtenidas: {odds_out}")
+    return odds_out
