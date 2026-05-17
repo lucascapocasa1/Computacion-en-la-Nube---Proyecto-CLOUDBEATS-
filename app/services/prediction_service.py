@@ -34,7 +34,7 @@ class Market:
     house_odds: float   # cuota decimal de la casa (real o estimada)
     ev:         float   # expected value = our_prob * house_odds - 1
     description: str
-    betano:     str
+    bookmaker:  str
 
 
 # ── Punto de entrada ──────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
         our_prob=round(prob_c, 3), house_odds=odds_c,
         ev=round(prob_c * odds_c - 1, 4),
         description=f"Promedio combinado {total_corners:.1f} corners/partido. Prob. estimada: {prob_c*100:.0f}%.",
-        betano="Corners → Total de corners",
+        bookmaker="Corners · Total de corners",
     ))
 
     # ── Goles Over/Under ──────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
         our_prob=round(prob_g, 3), house_odds=odds_g,
         ev=round(prob_g * odds_g - 1, 4),
         description=f"Promedio combinado {total_goals:.1f} goles/partido. Prob. estimada: {prob_g*100:.0f}%.",
-        betano="Goles → Total de goles",
+        bookmaker="Goles · Total de goles",
     ))
 
     # ── BTTS (ambos equipos anotan) ───────────────────────────────────────────
@@ -134,7 +134,7 @@ def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
             our_prob=round(prob_btts, 3), house_odds=odds_btts,
             ev=round(prob_btts * odds_btts - 1, 4),
             description=f"Local promedia {home_gs} goles, visitante {away_gs}. Prob.: {prob_btts*100:.0f}%.",
-            betano="Goles → Ambos equipos marcan",
+            bookmaker="Goles · Ambos equipos marcan",
         ))
 
     # ── Tarjetas amarillas ────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
         our_prob=round(prob_y, 3), house_odds=odds_y,
         ev=round(prob_y * odds_y - 1, 4),
         description=f"Promedio combinado {total_cards:.1f} amarillas/partido. Prob. estimada: {prob_y*100:.0f}%.",
-        betano="Tarjetas → Total de tarjetas amarillas",
+        bookmaker="Tarjetas · Amarillas totales",
     ))
 
     # ── Faltas ────────────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
         our_prob=round(prob_f, 3), house_odds=odds_f,
         ev=round(prob_f * odds_f - 1, 4),
         description=f"Promedio combinado {total_fouls:.1f} faltas/partido. Prob. estimada: {prob_f*100:.0f}%.",
-        betano="Faltas → Total de faltas",
+        bookmaker="Faltas · Total de faltas",
     ))
 
     # ── Tiros al arco ─────────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
         our_prob=round(prob_s, 3), house_odds=odds_s,
         ev=round(prob_s * odds_s - 1, 4),
         description=f"Promedio combinado {total_shots:.1f} tiros/partido. Prob. estimada: {prob_s*100:.0f}%.",
-        betano="Tiros → Total de tiros al arco",
+        bookmaker="Tiros · Total al arco",
     ))
 
     # ── Offsides ─────────────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
         our_prob=round(prob_o, 3), house_odds=odds_o,
         ev=round(prob_o * odds_o - 1, 4),
         description=f"Promedio combinado {total_off:.1f} offsides/partido. Prob. estimada: {prob_o*100:.0f}%.",
-        betano="Offsides → Total de offsides",
+        bookmaker="Offsides · Total de offsides",
     ))
 
     return markets
@@ -211,7 +211,7 @@ def _format(m: Market, level: str) -> dict:
         "ev_raw":         m.ev,
         "has_value":      m.ev > 0,
         "description":    m.description,
-        "betano_market":  m.betano,
+        "betano_market":  m.bookmaker,
         # campos legacy para compatibilidad con el frontend actual
         "confidence":     round(m.our_prob, 2),
         "estimated_odds": f"{m.house_odds:.2f}",
@@ -274,7 +274,7 @@ def _best_line(value: float) -> tuple[float, str]:
 
 def _fair_odds_with_margin(prob: float, margin: float = 0.08) -> float:
     """
-    Cuota justa = 1/prob. Con margen de casa del 8% (típico de Betano Argentina).
+    Cuota justa = 1/prob. Con margen de casa del 8% (margen típico de casas europeas).
     Retorna la cuota que ofrecería la casa (siempre menor que la justa).
     """
     if prob <= 0:

@@ -1,940 +1,138 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CloudBets — Análisis Estadístico de Apuestas</title>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --bg: #080c10;
-      --surface: #0f1620;
-      --surface2: #16202e;
-      --border: #1e2d3d;
-      --accent: #00e5ff;
-      --accent2: #ff3d71;
-      --gold: #ffd60a;
-      --green: #00e096;
-      --yellow: #ffaa00;
-      --red: #ff3d71;
-      --text: #e8f0fe;
-      --muted: #5a7a9a;
-      --font-display: 'Bebas Neue', sans-serif;
-      --font-body: 'DM Sans', sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-    }
-
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font-body);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-
-    /* === FONDO ANIMADO === */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 60% 40% at 20% 10%, rgba(0,229,255,0.07) 0%, transparent 70%),
-        radial-gradient(ellipse 50% 30% at 80% 90%, rgba(255,61,113,0.06) 0%, transparent 70%);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    /* Cuadrícula de fondo */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
-      background-size: 50px 50px;
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    /* === LAYOUT === */
-    .container {
-      position: relative;
-      z-index: 1;
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    /* === HEADER === */
-    header {
-      padding: 32px 0 0;
-      text-align: center;
-    }
-
-    .logo-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(0,229,255,0.08);
-      border: 1px solid rgba(0,229,255,0.2);
-      border-radius: 100px;
-      padding: 6px 16px;
-      font-size: 11px;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--accent);
-      font-family: var(--font-mono);
-      margin-bottom: 20px;
-    }
-
-    .logo-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.7); }
-    }
-
-    h1 {
-      font-family: var(--font-display);
-      font-size: clamp(52px, 10vw, 100px);
-      letter-spacing: 0.02em;
-      line-height: 0.9;
-      color: var(--text);
-    }
-
-    h1 span {
-      color: var(--accent);
-      -webkit-text-stroke: 1px var(--accent);
-    }
-
-    .subtitle {
-      margin-top: 12px;
-      color: var(--muted);
-      font-size: 15px;
-      font-weight: 300;
-    }
-
-    /* === SEARCH PANEL === */
-    .search-panel {
-      margin: 48px 0 0;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 32px;
-    }
-
-    .panel-title {
-      font-family: var(--font-display);
-      font-size: 24px;
-      letter-spacing: 0.05em;
-      color: var(--accent);
-      margin-bottom: 24px;
-    }
-
-    .fields-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr auto;
-      gap: 16px;
-      align-items: end;
-    }
-
-    @media (max-width: 640px) {
-      .fields-row { grid-template-columns: 1fr; }
-    }
-
-    .field-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .field-group label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--muted);
-      font-family: var(--font-mono);
-    }
-
-    .field-group input {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 16px;
-      color: var(--text);
-      font-family: var(--font-body);
-      font-size: 15px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    .field-group input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(0,229,255,0.1);
-    }
-
-    .field-group input::placeholder { color: var(--muted); }
-
-    .btn-analyze {
-      background: var(--accent);
-      color: #000;
-      border: none;
-      border-radius: 10px;
-      padding: 12px 28px;
-      font-family: var(--font-display);
-      font-size: 18px;
-      letter-spacing: 0.05em;
-      cursor: pointer;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
-
-    .btn-analyze:hover {
-      background: #fff;
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0,229,255,0.3);
-    }
-
-    .btn-analyze:active { transform: translateY(0); }
-
-    .btn-demo {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 10px;
-      padding: 10px 20px;
-      font-family: var(--font-mono);
-      font-size: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-      margin-top: 12px;
-      letter-spacing: 0.05em;
-    }
-
-    .btn-demo:hover { border-color: var(--accent); color: var(--accent); }
-
-    /* === MATCH HEADER === */
-    .match-header {
-      margin: 40px 0;
-      text-align: center;
-      display: none;
-    }
-
-    .match-header.visible { display: block; }
-
-    .vs-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 32px;
-      margin-bottom: 8px;
-    }
-
-    .team-name {
-      font-family: var(--font-display);
-      font-size: clamp(28px, 5vw, 52px);
-      letter-spacing: 0.04em;
-    }
-
-    .vs-badge {
-      font-family: var(--font-display);
-      font-size: 20px;
-      color: var(--muted);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 4px 12px;
-    }
-
-    .match-meta {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
-
-    /* === STATS GRID === */
-    .stats-section { display: none; margin-bottom: 40px; }
-    .stats-section.visible { display: block; }
-
-    .section-label {
-      font-family: var(--font-display);
-      font-size: 20px;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      text-transform: uppercase;
-      margin-bottom: 16px;
-    }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 12px;
-    }
-
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-      transition: border-color 0.2s;
-    }
-
-    .stat-card:hover { border-color: rgba(0,229,255,0.3); }
-
-    .stat-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--muted);
-      font-family: var(--font-mono);
-      margin-bottom: 6px;
-    }
-
-    .stat-values {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      gap: 8px;
-    }
-
-    .stat-val {
-      font-family: var(--font-display);
-      font-size: 28px;
-      line-height: 1;
-    }
-
-    .stat-val.home { color: var(--accent); }
-    .stat-val.away { color: var(--accent2); }
-    .stat-val.combined { color: var(--gold); font-size: 22px; }
-
-    .stat-sublabel {
-      font-size: 9px;
-      color: var(--muted);
-      font-family: var(--font-mono);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .stat-bar {
-      margin-top: 8px;
-      height: 3px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .stat-bar-fill {
-      height: 100%;
-      border-radius: 2px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      transition: width 0.8s ease;
-    }
-
-    /* === RECOMMENDATIONS === */
-    .recs-section { display: none; margin-bottom: 60px; }
-    .recs-section.visible { display: block; }
-
-    .recs-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
-    }
-
-    @media (max-width: 768px) {
-      .recs-grid { grid-template-columns: 1fr; }
-    }
-
-    .rec-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 24px;
-      position: relative;
-      overflow: hidden;
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-    .rec-card:hover {
-      transform: translateY(-4px);
-    }
-
-    .rec-card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-    }
-
-    .rec-card.safe::before { background: var(--green); box-shadow: 0 0 20px var(--green); }
-    .rec-card.risky::before { background: var(--yellow); box-shadow: 0 0 20px var(--yellow); }
-    .rec-card.longshot::before { background: var(--red); box-shadow: 0 0 20px var(--red); }
-
-    .rec-card:hover.safe { box-shadow: 0 8px 40px rgba(0,224,150,0.15); }
-    .rec-card:hover.risky { box-shadow: 0 8px 40px rgba(255,170,0,0.15); }
-    .rec-card:hover.longshot { box-shadow: 0 8px 40px rgba(255,61,113,0.15); }
-
-    .rec-level {
-      font-size: 11px;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      font-family: var(--font-mono);
-      margin-bottom: 12px;
-    }
-
-    .rec-level.safe { color: var(--green); }
-    .rec-level.risky { color: var(--yellow); }
-    .rec-level.longshot { color: var(--red); }
-
-    .rec-market {
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 6px;
-    }
-
-    .rec-bet {
-      font-family: var(--font-display);
-      font-size: 26px;
-      letter-spacing: 0.03em;
-      margin-bottom: 12px;
-      line-height: 1.1;
-    }
-
-    .rec-meta {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 12px;
-    }
-
-    .meta-item {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .meta-val {
-      font-family: var(--font-mono);
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .meta-val.green { color: var(--green); }
-    .meta-val.yellow { color: var(--yellow); }
-    .meta-val.red { color: var(--red); }
-
-    .meta-label {
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-    }
-
-    /* Badge de valor esperado */
-    .value-badge {
-      display: inline-block;
-      font-size: 0.65rem;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 4px;
-      letter-spacing: 0.05em;
-      vertical-align: middle;
-      margin-left: 6px;
-    }
-    .value-badge.positive { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.3); }
-    .value-badge.negative { background: rgba(248,113,113,0.12); color: var(--red);   border: 1px solid rgba(248,113,113,0.2); }
-
-    .ev-bar-wrap { margin: 8px 0 4px; }
-    .ev-bar-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
-
-    .confidence-bar {
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-bottom: 12px;
-    }
-
-    .confidence-fill {
-      height: 100%;
-      border-radius: 2px;
-      transition: width 1s ease;
-    }
-
-    .confidence-fill.safe { background: var(--green); }
-    .confidence-fill.risky { background: var(--yellow); }
-    .confidence-fill.longshot { background: var(--red); }
-
-    .rec-description {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .betano-tag {
-      display: inline-block;
-      margin-top: 12px;
-      background: rgba(255,214,10,0.08);
-      border: 1px solid rgba(255,214,10,0.2);
-      border-radius: 6px;
-      padding: 4px 10px;
-      font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--gold);
-      letter-spacing: 0.05em;
-    }
-
-    /* === LOADING === */
-    .loading {
-      display: none;
-      text-align: center;
-      padding: 60px;
-    }
-
-    .loading.visible { display: block; }
-
-    .spinner {
-      width: 48px; height: 48px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 20px;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .loading-text {
-      font-family: var(--font-mono);
-      font-size: 13px;
-      color: var(--muted);
-      letter-spacing: 0.08em;
-    }
-
-    /* === ERROR === */
-    .error-box {
-      display: none;
-      background: rgba(255,61,113,0.08);
-      border: 1px solid rgba(255,61,113,0.3);
-      border-radius: 12px;
-      padding: 20px 24px;
-      margin: 24px 0;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      color: var(--red);
-    }
-
-    .error-box.visible { display: block; }
-
-    /* === FOOTER === */
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 32px 0;
-      text-align: center;
-      color: var(--muted);
-      font-size: 11px;
-      font-family: var(--font-mono);
-      letter-spacing: 0.08em;
-    }
-
-    footer a { color: var(--accent); text-decoration: none; }
-
-    /* === DISCLAIMER === */
-    .disclaimer {
-      background: rgba(255,170,0,0.06);
-      border: 1px solid rgba(255,170,0,0.15);
-      border-radius: 10px;
-      padding: 14px 20px;
-      font-size: 11px;
-      color: var(--muted);
-      margin: 24px 0;
-      line-height: 1.6;
-    }
-
-    /* animaciones de entrada */
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .animate-in {
-      animation: fadeUp 0.5s ease forwards;
-    }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
-<div class="container">
 
-  <!-- HEADER -->
-  <header>
-    <div class="logo-tag">
-      <span class="logo-dot"></span>
-      Computación en la Nube · Análisis Estadístico
+<!-- ── Navbar ────────────────────────────────────────────────── -->
+<nav class="navbar">
+  <div class="nav-brand">CLOUDBETS</div>
+  <div class="nav-actions">
+    <button class="btn-history-toggle" id="btn-history" onclick="toggleHistory()">
+      🕐 HISTORIAL
+    </button>
+    <button class="btn-standings-toggle" id="btn-standings" onclick="toggleStandings()">
+      🏆 TABLA DE POSICIONES
+    </button>
+  </div>
+</nav>
+
+<!-- ── Dropdown: tabla de posiciones ─────────────────────────── -->
+<div class="standings-dropdown" id="standings-dropdown">
+  <div class="dropdown-inner">
+    <div class="dropdown-leagues">
+      <div class="dropdown-title">TABLA DE POSICIONES</div>
+      <div class="league-list" id="league-list"></div>
     </div>
-    <h1>CLOUD<span>BETS</span></h1>
-    <p class="subtitle">Recomendaciones de apuesta basadas en datos reales de los últimos 10 partidos</p>
-  </header>
-
-  <!-- SEARCH -->
-<div class="search-panel">
-  <div class="panel-title">PARTIDOS DE HOY</div>
-
-  <div id="matches-list" style="display:flex; flex-direction:column; gap:12px;">
-    <!-- partidos dinámicos -->
+    <div class="dropdown-standings" id="dropdown-standings">
+      <div class="standings-loading">Seleccioná una liga para ver la tabla</div>
+    </div>
   </div>
 </div>
 
-  <!-- MATCH HEADER -->
+<!-- ── Dropdown: historial ───────────────────────────────────── -->
+<div class="history-dropdown" id="history-dropdown">
+  <div class="history-title">HISTORIAL</div>
+  <div id="history-list"></div>
+  <button class="btn-clear-history" onclick="clearHistory()">🗑 Limpiar historial</button>
+</div>
+
+<!-- ── Contenido principal ───────────────────────────────────── -->
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-tag"><span class="logo-dot"></span>Computación en la Nube · Análisis Estadístico</div>
+    <h1>CLOUD<span>BETS</span></h1>
+    <p class="subtitle">Recomendaciones de apuesta por valor esperado (EV) · Datos reales de api-football</p>
+  </header>
+
+  <!-- Partidos del día -->
+  <div class="search-panel">
+    <div class="panel-title">PARTIDOS DE HOY</div>
+    <div id="matches-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:12px;">
+      <button class="btn-demo" onclick="runDemo()">▶ DEMO — Boca vs River</button>
+      <button class="btn-export-pdf" id="btn-export-pdf" onclick="exportPDF()">⬇ Exportar PDF</button>
+    </div>
+  </div>
+
+  <!-- Cabecera del partido analizado -->
   <div class="match-header" id="match-header">
-    <div class="vs-row">
-      <div class="team-name" id="home-name">—</div>
-      <div class="vs-badge">VS</div>
-      <div class="team-name" id="away-name">—</div>
+    <div class="match-header-top" id="match-header-top">
+      <div class="vs-row">
+        <div class="team-name" id="home-name">—</div>
+        <div class="vs-badge">VS</div>
+        <div class="team-name" id="away-name">—</div>
+      </div>
     </div>
     <div class="match-meta" id="match-meta">—</div>
   </div>
 
-  <!-- STATS -->
-  <div class="stats-section" id="stats-section">
-    <div class="section-label">Promedios · Últimos 10 partidos</div>
-    <div class="stats-grid" id="stats-grid"></div>
-  </div>
-
-  <!-- LOADING (oculto por defecto, se muestra mientras carga el análisis) -->
+  <!-- Loading / Error -->
   <div class="loading" id="loading">
     <div class="spinner"></div>
     <div class="loading-text" id="loading-text">CARGANDO...</div>
   </div>
-
-  <!-- ERROR (oculto por defecto, se muestra si hay un fallo) -->
   <div class="error-box" id="error-box"></div>
 
-  <!-- RECOMMENDATIONS -->
-  <div class="recs-section" id="recs-section">
-    <div class="section-label" style="margin-bottom:20px;">Apuestas recomendadas · Betano</div>
-    <div class="recs-grid" id="recs-grid"></div>
+  <!-- Stats en vivo (solo partidos en curso) -->
+  <div class="live-stats-section" id="live-stats-section">
+    <div class="section-label">⚡ Estadísticas en vivo</div>
+    <div class="live-refresh-info" id="live-refresh-time"></div>
+    <div class="live-stats-grid" id="live-stats-grid"></div>
   </div>
 
-</div>
+  <!-- Tabs: Estadísticas / Alineaciones / Eventos -->
+  <div class="content-tabs" id="content-tabs">
+    <button class="tab-btn active" onclick="switchTab('stats')">📊 Estadísticas</button>
+    <button class="tab-btn"        onclick="switchTab('lineups')">👥 Alineaciones</button>
+    <button class="tab-btn"        onclick="switchTab('events')">⚡ Eventos</button>
+  </div>
 
-<!-- FOOTER -->
+  <!-- Tab: Estadísticas de temporada -->
+  <div class="tab-panel active" id="panel-stats">
+    <div class="stats-grid" id="stats-grid"></div>
+  </div>
+
+  <!-- Tab: Alineaciones -->
+  <div class="tab-panel" id="panel-lineups">
+    <div class="lineups-grid" id="lineups-grid"></div>
+  </div>
+
+  <!-- Tab: Eventos del partido -->
+  <div class="tab-panel" id="panel-events">
+    <div class="events-list" id="events-list"></div>
+  </div>
+
+  <!-- Recomendaciones -->
+  <div class="recs-section" id="recs-section">
+    <div class="section-label" style="margin-bottom:14px;">
+      Apuestas recomendadas · Ordenadas por Valor Esperado (EV)
+    </div>
+    <div class="recs-grid" id="recs-grid"></div>
+    <div class="disclaimer">
+      ⚠️ Estas recomendaciones son estimaciones estadísticas basadas en datos históricos.
+      No garantizan ganancias. Apostá con responsabilidad.
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- Footer -->
 <footer>
-  <div class="container">
+  <div style="max-width:1100px;margin:0 auto;padding:0 24px;">
     CloudBets · Computación en la Nube ·
     Datos: <a href="https://www.api-football.com" target="_blank">API-Football</a> ·
-    Cuotas: <a href="https://betano.com.ar" target="_blank">Betano Argentina</a>
+    Cuotas: <a href="https://bet365.com" target="_blank">Bet365</a>
   </div>
 </footer>
 
-<script>
-  const API_BASE = "http://localhost:8000";
-
-  const STAT_META = [
-    { key: "corners",       label: "Corners",         icon: "⛳" },
-    { key: "yellow_cards",  label: "Amarillas",        icon: "🟨" },
-    { key: "red_cards",     label: "Rojas",            icon: "🟥" },
-    { key: "offsides",      label: "Offsides",         icon: "🚩" },
-    { key: "goals_scored",  label: "Goles a favor",    icon: "⚽" },
-    { key: "goals_conceded",label: "Goles en contra",  icon: "🥅" },
-    { key: "shots_on_goal", label: "Tiros al arco",    icon: "🎯" },
-    { key: "fouls",         label: "Faltas",           icon: "💥" },
-  ];
-
-  function showError(msg) {
-  const el = document.getElementById("error-box");
-  if (!el) return;
-
-  el.textContent = "❌ " + msg;
-  el.classList.add("visible");
-}
-
-  function clearError() {
-  const el = document.getElementById("error-box");
-  if (el) el.classList.remove("visible");
-}
-
-  function setLoading(text) {
-    document.getElementById("loading").classList.add("visible");
-    document.getElementById("loading-text").textContent = text;
-  }
-
-  function stopLoading() {
-    document.getElementById("loading").classList.remove("visible");
-  }
-
-  async function loadMatches() {
-  try {
-    const res = await fetch(`${API_BASE}/matches/today`);
-    if (!res.ok) throw new Error("No se pudieron cargar los partidos");
-
-    const matches = await res.json();
-
-    const container = document.getElementById("matches-list");
-    container.innerHTML = "";
-
-    let activeMatchId = null;
-
-    matches.forEach(match => {
-      const el = document.createElement("div");
-
-      el.style.background = "var(--surface2)";
-      el.style.border = "1px solid var(--border)";
-      el.style.borderRadius = "10px";
-      el.style.padding = "14px 18px";
-      el.style.cursor = "pointer";
-      el.style.display = "flex";
-      el.style.justifyContent = "space-between";
-      el.style.alignItems = "center";
-      el.style.transition = "0.2s";
-
-      el.onmouseenter = () => {
-        el.style.borderColor = "var(--accent)";
-      };
-
-      el.onmouseleave = () => {
-        el.style.borderColor = "var(--border)";
-      };
-
-      el.innerHTML = `
-        <div style="display:flex; flex-direction:column;">
-          <span style="font-family:var(--font-display); font-size:20px;">
-            ${match.home} vs ${match.away}
-          </span>
-          <span style="font-size:11px; color:var(--muted); font-family:var(--font-mono);">
-            ${match.league} · ${match.time}
-          </span>
-        </div>
-
-        <button class="btn-analyze">VER CUOTAS</button>
-      `;
-
-      el.querySelector("button").onclick = (e) => {
-        e.stopPropagation();
-        runAnalysisByFixture(match.id);
-      };
-
-      el.onclick = () => {
-  activeMatchId = match.id;
-
-  // reset estilos
-  document.querySelectorAll("#matches-list > div").forEach(item => {
-    item.style.borderColor = "var(--border)";
-    item.style.background = "var(--surface2)";
-  });
-
-  // marcar activo
-  el.style.borderColor = "var(--accent)";
-  el.style.background = "rgba(0,229,255,0.08)";
-
-  runAnalysisByFixture(match.id);
-};
-
-      container.appendChild(el);
-    });
-
-  } catch (e) {
-    showError(e.message);
-  }
-}
-
-async function runAnalysisByFixture(fixtureId) {
-  clearError();
-  setLoading("ANALIZANDO PARTIDO...");
-
-  try {
-    const res = await fetch(`${API_BASE}/analyze?fixture_id=${fixtureId}`);
-    if (!res.ok) throw new Error(await res.text());
-
-    const data = await res.json();
-    renderResults(data);
-    document.getElementById("match-header").scrollIntoView({
-  behavior: "smooth"
-});
-
-  } catch (e) {
-    stopLoading();
-    showError(e.message);
-  }
-}
-
-  async function runDemo() {
-    clearError();
-    setLoading("CARGANDO DEMO — BOCA VS RIVER...");
-    try {
-      const res = await fetch(`${API_BASE}/analyze/demo`);
-      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
-      const data = await res.json();
-      renderResults(data);
-    } catch (e) {
-      stopLoading();
-      showError("No se pudo conectar al backend. ¿Está corriendo en localhost:8000? — " + e.message);
-    }
-  }
-
-  async function runAnalysis() {
-    const home = document.getElementById("home-input").value.trim();
-    const away = document.getElementById("away-input").value.trim();
-
-    if (!home || !away) {
-      showError("Ingresá ambos nombres de equipo para analizar.");
-      return;
-    }
-
-    clearError();
-    setLoading("BUSCANDO EQUIPOS...");
-
-    try {
-      // Buscar IDs de los equipos
-      const [homeRes, awayRes] = await Promise.all([
-        fetch(`${API_BASE}/search/team?name=${encodeURIComponent(home)}`),
-        fetch(`${API_BASE}/search/team?name=${encodeURIComponent(away)}`)
-      ]);
-
-      if (!homeRes.ok || !awayRes.ok) throw new Error("Error buscando equipos");
-
-      const homeTeams = await homeRes.json();
-      const awayTeams = await awayRes.json();
-
-      if (!homeTeams.length) throw new Error(`No se encontró el equipo: ${home}`);
-      if (!awayTeams.length) throw new Error(`No se encontró el equipo: ${away}`);
-
-      const homeId = homeTeams[0].id;
-      const awayId = awayTeams[0].id;
-
-      document.getElementById("loading-text").textContent = "RECOLECTANDO ESTADÍSTICAS...";
-
-      const res = await fetch(`${API_BASE}/analyze?home_team_id=${homeId}&away_team_id=${awayId}`);
-      if (!res.ok) throw new Error(`Error ${res.status}: ${await res.text()}`);
-
-      const data = await res.json();
-      renderResults(data);
-
-    } catch (e) {
-      stopLoading();
-      showError(e.message);
-    }
-  }
-
-  function renderResults(data) {
-    stopLoading();
-
-    const { match, home_stats, away_stats, recommendations } = data;
-
-    // Match header
-    document.getElementById("home-name").textContent = match.home;
-    document.getElementById("away-name").textContent = match.away;
-    document.getElementById("match-meta").textContent =
-      `Liga ID ${match.league_id} · Temporada ${match.season} · ${match.games_analyzed} partidos analizados` +
-      (data.demo ? " · MODO DEMO" : "");
-    document.getElementById("match-header").classList.add("visible", "animate-in");
-
-    // Stats
-    const grid = document.getElementById("stats-grid");
-    grid.innerHTML = "";
-    STAT_META.forEach(({ key, label, icon }) => {
-      const hv = home_stats[key] ?? 0;
-      const av = away_stats[key] ?? 0;
-      const combined = Math.round((hv + av) * 10) / 10;
-      const maxPossible = Math.max(combined, 12);
-      const pct = Math.min(100, (combined / maxPossible) * 100);
-
-      grid.innerHTML += `
-        <div class="stat-card">
-          <div class="stat-label">${icon} ${label}</div>
-          <div class="stat-values">
-            <div>
-              <div class="stat-val home">${hv}</div>
-              <div class="stat-sublabel">Local</div>
-            </div>
-            <div>
-              <div class="stat-val away">${av}</div>
-              <div class="stat-sublabel">Visita</div>
-            </div>
-            <div>
-              <div class="stat-val combined">${combined}</div>
-              <div class="stat-sublabel">Total</div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-fill" style="width:${pct}%"></div>
-          </div>
-        </div>`;
-    });
-    document.getElementById("stats-section").classList.add("visible", "animate-in");
-
-    // Recommendations
-    const recs = [
-      { data: recommendations.safe,     level: "safe",     label: "🟢 APUESTA SEGURA" },
-      { data: recommendations.risky,    level: "risky",    label: "🟡 MENOS SEGURA" },
-      { data: recommendations.longshot, level: "longshot", label: "🔴 CASI IMPOSIBLE" },
-    ];
-
-    const recsGrid = document.getElementById("recs-grid");
-    recsGrid.innerHTML = "";
-    recs.forEach(({ data: rec, level, label }) => {
-      if (!rec) return;
-
-      const probPct    = rec.our_probability || Math.round(rec.confidence * 100) + "%";
-      const evRaw      = rec.ev_raw ?? 0;
-      const hasValue   = rec.has_value ?? evRaw > 0;
-      const evColor    = hasValue ? "var(--green)" : "var(--red)";
-      const colorClass = level === 'safe' ? 'green' : level === 'risky' ? 'yellow' : 'red';
-      const probNum    = parseFloat(probPct);
-      const valueBadge = hasValue
-        ? `<span class="value-badge positive">✓ CON VALOR</span>`
-        : `<span class="value-badge negative">SIN VALOR</span>`;
-
-      recsGrid.innerHTML += `
-        <div class="rec-card ${level} animate-in">
-          <div class="rec-level ${level}">${label} ${valueBadge}</div>
-          <div class="rec-market">${rec.market}</div>
-          <div class="rec-bet">${rec.bet}</div>
-
-          <div class="rec-meta">
-            <div class="meta-item">
-              <div class="meta-val ${colorClass}">${probPct}</div>
-              <div class="meta-label">Prob. propia</div>
-            </div>
-            <div class="meta-item">
-              <div class="meta-val" style="color:var(--gold)">${rec.house_odds ?? rec.estimated_odds}</div>
-              <div class="meta-label">Cuota casa</div>
-            </div>
-            <div class="meta-item">
-              <div class="meta-val" style="color:${evColor}">${rec.expected_value}</div>
-              <div class="meta-label">Valor esp. (EV)</div>
-            </div>
-          </div>
-
-          <div class="ev-bar-wrap">
-            <div class="ev-bar-label">Prob. estimada</div>
-            <div class="confidence-bar">
-              <div class="confidence-fill ${level}" style="width:${probNum}%"></div>
-            </div>
-          </div>
-
-          <div class="rec-description">${rec.description}</div>
-          <div class="betano-tag">📍 Betano: ${rec.betano_market}</div>
-        </div>`;
-    });
-    document.getElementById("recs-section").classList.add("visible", "animate-in");
-  }
-  setTimeout(() => {
-  document.getElementById("stats-section").classList.add("animate-in");
-  document.getElementById("recs-section").classList.add("animate-in");
-}, 100);
-
-document.addEventListener("DOMContentLoaded", () => {
-  loadMatches();
-});
-</script>
+<script src="script.js"></script>
 </body>
 </html>

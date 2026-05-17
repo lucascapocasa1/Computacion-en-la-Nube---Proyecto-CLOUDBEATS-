@@ -16,3 +16,4 @@ IMPORTANT_LEAGUES = {39, 140, 135, 78, 61, 128, 130, 2, 11, 13}
 # Cantidad de partidos que se muestran en el mensaje de contexto al usuario
 # (el análisis real usa los promedios de toda la temporada, no solo N partidos)
 LAST_N_MATCHES = 10
+FALLBACK_SEASON = 2023
