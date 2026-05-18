@@ -1,284 +1,246 @@
 """
-prediction_service.py
-Motor de VALUE BETTING puro.
+prediction_service.py — Motor de VALUE BETTING
 
-Concepto:
-  - "Value" = cuando nuestra probabilidad estimada > probabilidad implícita de la casa.
-  - EV (Expected Value) = (prob_estimada × cuota_real) - 1
-    · EV > 0 → apuesta con valor (ganarías a largo plazo)
-    · EV < 0 → la casa tiene ventaja en esa apuesta
+EV (Expected Value) = prob_estimada × cuota_real - 1
+  · Solo es calculable con cuotas REALES de la casa.
+  · Con cuotas estimadas el EV siempre daría ≈ -8% (margen de la casa),
+    lo cual no es informativo. En ese caso mostramos en su lugar:
+      - "Confianza estadística": qué tan fuera de la media está la línea
+      - "Cuota justa": la cuota que debería ofrecer la casa sin margen
 
 Flujo:
-  1. Para cada mercado disponible, estimamos la probabilidad con los stats.
-  2. Comparamos con la cuota real de la casa (si la tenemos) o usamos cuota estimada.
-  3. Calculamos EV de cada mercado.
-  4. Rankeamos por EV descendente.
-  5. Las 3 apuestas recomendadas son simplemente las de mayor EV (una por categoría):
-       - safe     → EV más alto disponible
-       - risky    → segundo mejor EV
-       - longshot → tercer mejor EV
-  6. SIN combinadas: cada apuesta es un mercado único y simple.
+  1. Estimamos probabilidad de cada mercado con modelos estadísticos.
+  2. Si hay cuota real → calculamos EV real.
+     Si no            → calculamos cuota justa y mostramos confianza.
+  3. Rankeamos por EV (con cuotas reales) o por confianza (sin ellas).
+  4. Devolvemos los 3 mejores mercados: safe / risky / longshot.
 """
 
 from __future__ import annotations
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class Market:
     key:        str
-    market:     str     # nombre visible
-    bet:        str     # descripción de la apuesta
-    our_prob:   float   # nuestra probabilidad estimada (0-1)
-    house_odds: float   # cuota decimal de la casa (real o estimada)
-    ev:         float   # expected value = our_prob * house_odds - 1
+    market:     str
+    bet:        str
+    our_prob:   float   # probabilidad estimada (0–1)
+    fair_odds:  float   # cuota justa sin margen = 1 / our_prob
+    house_odds: float   # cuota real de Bet365 (o 0.0 si no disponible)
+    has_real_odds: bool
+    ev:         float   # EV real si hay cuota; confianza normalizada si no
     description: str
     bookmaker:  str
 
 
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 
-def generate_predictions(combined: dict, games_analyzed: int, real_odds: dict = None) -> dict:
-    """
-    Evalúa todos los mercados y devuelve las 3 mejores apuestas por EV.
+def generate_predictions(combined: dict, games_analyzed: int,
+                         real_odds: dict | None = None) -> dict:
+    real_odds = real_odds or {}
+    all_markets = _evaluate_all_markets(combined, real_odds)
 
-    `real_odds`: dict opcional con cuotas reales de la casa, formato:
-      {
-        "corners_over_X":  2.10,
-        "corners_under_X": 1.75,
-        "goals_over_2.5":  1.90,
-        "goals_under_2.5": 1.95,
-        "btts_yes":        1.85,
-        "btts_no":         2.00,
-        "cards_over_X":    2.20,
-        ...
-      }
-    Si no hay cuotas reales, se usa cuota estimada con margen de casa del 8%.
-    """
-    all_markets = _evaluate_all_markets(combined, real_odds or {})
+    # Rankear: si hay cuotas reales, por EV; si no, por probabilidad (confianza)
+    has_any_real = any(m.has_real_odds for m in all_markets)
+    ranked = sorted(all_markets,
+                    key=lambda m: m.ev if has_any_real else m.our_prob,
+                    reverse=True)
 
-    # Filtrar solo apuestas con EV positivo (tienen valor real)
-    positive_ev = [m for m in all_markets if m.ev > 0]
+    # Priorizar mercados con EV positivo cuando existen
+    if has_any_real:
+        positive = [m for m in ranked if m.ev > 0 and m.has_real_odds]
+        candidates = positive if len(positive) >= 3 else ranked
+    else:
+        candidates = ranked
 
-    # Si no hay EV positivo (mercado muy eficiente), tomar igualmente los mejores
-    candidates = positive_ev if len(positive_ev) >= 3 else all_markets
-
-    # Ordenar por EV descendente
-    ranked = sorted(candidates, key=lambda m: m.ev, reverse=True)
-
-    # Las 3 apuestas: mejor EV = safe, luego risky, luego longshot
-    safe_m     = ranked[0] if len(ranked) > 0 else None
-    risky_m    = ranked[1] if len(ranked) > 1 else None
-    longshot_m = ranked[2] if len(ranked) > 2 else None
+    safe_m     = candidates[0] if len(candidates) > 0 else None
+    risky_m    = candidates[1] if len(candidates) > 1 else None
+    longshot_m = candidates[2] if len(candidates) > 2 else None
 
     return {
-        "safe":     _format(safe_m,     "safe")     if safe_m     else None,
-        "risky":    _format(risky_m,    "risky")    if risky_m    else None,
-        "longshot": _format(longshot_m, "longshot") if longshot_m else None,
-        "all_markets": [_format(m, _ev_level(m.ev)) for m in ranked],  # debug
+        "safe":        _format(safe_m)     if safe_m     else None,
+        "risky":       _format(risky_m)    if risky_m    else None,
+        "longshot":    _format(longshot_m) if longshot_m else None,
+        "has_real_odds": has_any_real,
+        "all_markets": [_format(m) for m in ranked],
     }
 
 
-# ── Evaluación de todos los mercados ─────────────────────────────────────────
+# ── Evaluación de mercados ────────────────────────────────────────────────────
 
 def _evaluate_all_markets(c: dict, real_odds: dict) -> list[Market]:
     markets = []
 
-    # ── Corners Over/Under ────────────────────────────────────────────────────
-    total_corners = c["total_corners"]
-    line_c, dir_c = _best_line(total_corners)
-    prob_c = _poisson_over_prob(total_corners, line_c) if dir_c == "over" else 1 - _poisson_over_prob(total_corners, line_c + 1)
-    odds_c = real_odds.get(f"corners_{'over' if dir_c == 'over' else 'under'}_{line_c}", _fair_odds_with_margin(prob_c))
-    markets.append(Market(
-        key="corners", market="Corners",
-        bet=f"{'Más' if dir_c=='over' else 'Menos'} de {line_c:.1f} corners",
-        our_prob=round(prob_c, 3), house_odds=odds_c,
-        ev=round(prob_c * odds_c - 1, 4),
-        description=f"Promedio combinado {total_corners:.1f} corners/partido. Prob. estimada: {prob_c*100:.0f}%.",
+    # Corners
+    tc = c["total_corners"]
+    line_c, dir_c = _best_line(tc)
+    prob_c = _poisson_prob(tc, line_c, dir_c)
+    markets.append(_make_market(
+        key="corners", market="Corners", direction=dir_c, line=line_c,
+        value=tc, unit="corners", prob=prob_c,
+        odds_key=f"corners_{dir_c}_{line_c}", real_odds=real_odds,
         bookmaker="Corners · Total de corners",
     ))
 
-    # ── Goles Over/Under ──────────────────────────────────────────────────────
-    total_goals = c["total_goals_scored"]
-    line_g, dir_g = _best_line(total_goals)
-    prob_g = _poisson_over_prob(total_goals, line_g) if dir_g == "over" else 1 - _poisson_over_prob(total_goals, line_g + 1)
-    odds_g = real_odds.get(f"goals_{'over' if dir_g=='over' else 'under'}_{line_g}", _fair_odds_with_margin(prob_g))
-    markets.append(Market(
-        key="goals", market="Goles",
-        bet=f"{'Más' if dir_g=='over' else 'Menos'} de {line_g:.1f} goles",
-        our_prob=round(prob_g, 3), house_odds=odds_g,
-        ev=round(prob_g * odds_g - 1, 4),
-        description=f"Promedio combinado {total_goals:.1f} goles/partido. Prob. estimada: {prob_g*100:.0f}%.",
+    # Goles totales
+    tg = c["total_goals_scored"]
+    line_g, dir_g = _best_line(tg)
+    prob_g = _poisson_prob(tg, line_g, dir_g)
+    markets.append(_make_market(
+        key="goals", market="Goles", direction=dir_g, line=line_g,
+        value=tg, unit="goles", prob=prob_g,
+        odds_key=f"goals_{dir_g}_{line_g}", real_odds=real_odds,
         bookmaker="Goles · Total de goles",
     ))
 
-    # ── BTTS (ambos equipos anotan) ───────────────────────────────────────────
-    home_gs = c["home_goals_scored"]
-    away_gs = c["away_goals_scored"]
-    # Poisson: prob de que cada equipo anote AL MENOS 1 gol
-    p_home_scores = 1 - math.exp(-home_gs)
-    p_away_scores = 1 - math.exp(-away_gs)
-    p_btts_yes = p_home_scores * p_away_scores
+    # BTTS
+    hgs, ags = c["home_goals_scored"], c["away_goals_scored"]
+    p_btts_yes = (1 - math.exp(-max(hgs, 0.01))) * (1 - math.exp(-max(ags, 0.01)))
     p_btts_no  = 1 - p_btts_yes
-
-    # Elegir el lado con más valor
-    for side, prob_btts, key_btts, bet_btts in [
+    for side, prob_b, ok, bet_b in [
         ("yes", p_btts_yes, "btts_yes", "Ambos equipos anotan — SÍ"),
         ("no",  p_btts_no,  "btts_no",  "Ambos equipos anotan — NO"),
     ]:
-        odds_btts = real_odds.get(key_btts, _fair_odds_with_margin(prob_btts))
+        ro_b = real_odds.get(ok, 0.0)
         markets.append(Market(
-            key=f"btts_{side}", market="BTTS",
-            bet=bet_btts,
-            our_prob=round(prob_btts, 3), house_odds=odds_btts,
-            ev=round(prob_btts * odds_btts - 1, 4),
-            description=f"Local promedia {home_gs} goles, visitante {away_gs}. Prob.: {prob_btts*100:.0f}%.",
+            key=f"btts_{side}", market="BTTS", bet=bet_b,
+            our_prob=round(prob_b, 3),
+            fair_odds=round(1 / max(prob_b, 0.01), 2),
+            house_odds=ro_b, has_real_odds=bool(ro_b),
+            ev=round(prob_b * ro_b - 1, 4) if ro_b else round(prob_b, 4),
+            description=f"Local promedia {hgs:.1f} goles, visitante {ags:.1f}. Prob.: {prob_b*100:.0f}%.",
             bookmaker="Goles · Ambos equipos marcan",
         ))
 
-    # ── Tarjetas amarillas ────────────────────────────────────────────────────
-    total_cards = c["total_yellow_cards"]
-    line_y, dir_y = _best_line(total_cards)
-    # Las tarjetas tienen alta varianza → desviación estándar estimada ~1.8
-    prob_y = _normal_prob(total_cards, 1.8, line_y, dir_y)
-    odds_y = real_odds.get(f"cards_{'over' if dir_y=='over' else 'under'}_{line_y}", _fair_odds_with_margin(prob_y))
-    markets.append(Market(
-        key="yellow_cards", market="Tarjetas amarillas",
-        bet=f"{'Más' if dir_y=='over' else 'Menos'} de {line_y:.1f} amarillas",
-        our_prob=round(prob_y, 3), house_odds=odds_y,
-        ev=round(prob_y * odds_y - 1, 4),
-        description=f"Promedio combinado {total_cards:.1f} amarillas/partido. Prob. estimada: {prob_y*100:.0f}%.",
+    # Tarjetas amarillas (distribución Normal, SD≈1.8)
+    ty = c["total_yellow_cards"]
+    line_y, dir_y = _best_line(ty)
+    prob_y = _normal_prob(ty, 1.8, line_y, dir_y)
+    markets.append(_make_market(
+        key="yellow_cards", market="Tarjetas amarillas", direction=dir_y, line=line_y,
+        value=ty, unit="amarillas", prob=prob_y,
+        odds_key=f"yellow_cards_{dir_y}_{line_y}", real_odds=real_odds,
         bookmaker="Tarjetas · Amarillas totales",
     ))
 
-    # ── Faltas ────────────────────────────────────────────────────────────────
-    total_fouls = c["total_fouls"]
-    line_f, dir_f = _best_line(total_fouls)
-    prob_f = _normal_prob(total_fouls, 4.5, line_f, dir_f)  # SD ~4.5
-    odds_f = real_odds.get(f"fouls_{'over' if dir_f=='over' else 'under'}_{line_f}", _fair_odds_with_margin(prob_f))
-    markets.append(Market(
-        key="fouls", market="Faltas",
-        bet=f"{'Más' if dir_f=='over' else 'Menos'} de {line_f:.1f} faltas",
-        our_prob=round(prob_f, 3), house_odds=odds_f,
-        ev=round(prob_f * odds_f - 1, 4),
-        description=f"Promedio combinado {total_fouls:.1f} faltas/partido. Prob. estimada: {prob_f*100:.0f}%.",
+    # Faltas (distribución Normal, SD≈4.5)
+    tf = c["total_fouls"]
+    line_f, dir_f = _best_line(tf)
+    prob_f = _normal_prob(tf, 4.5, line_f, dir_f)
+    markets.append(_make_market(
+        key="fouls", market="Faltas", direction=dir_f, line=line_f,
+        value=tf, unit="faltas", prob=prob_f,
+        odds_key=f"fouls_{dir_f}_{line_f}", real_odds=real_odds,
         bookmaker="Faltas · Total de faltas",
     ))
 
-    # ── Tiros al arco ─────────────────────────────────────────────────────────
-    total_shots = c["total_shots_on_goal"]
-    line_s, dir_s = _best_line(total_shots)
-    prob_s = _normal_prob(total_shots, 2.5, line_s, dir_s)
-    odds_s = real_odds.get(f"shots_{'over' if dir_s=='over' else 'under'}_{line_s}", _fair_odds_with_margin(prob_s))
-    markets.append(Market(
-        key="shots", market="Tiros al arco",
-        bet=f"{'Más' if dir_s=='over' else 'Menos'} de {line_s:.1f} tiros al arco",
-        our_prob=round(prob_s, 3), house_odds=odds_s,
-        ev=round(prob_s * odds_s - 1, 4),
-        description=f"Promedio combinado {total_shots:.1f} tiros/partido. Prob. estimada: {prob_s*100:.0f}%.",
+    # Tiros al arco (distribución Normal, SD≈2.5)
+    ts = c["total_shots_on_goal"]
+    line_s, dir_s = _best_line(ts)
+    prob_s = _normal_prob(ts, 2.5, line_s, dir_s)
+    markets.append(_make_market(
+        key="shots", market="Tiros al arco", direction=dir_s, line=line_s,
+        value=ts, unit="tiros al arco", prob=prob_s,
+        odds_key=f"shots_{dir_s}_{line_s}", real_odds=real_odds,
         bookmaker="Tiros · Total al arco",
     ))
 
-    # ── Offsides ─────────────────────────────────────────────────────────────
-    total_off = c["total_offsides"]
-    line_o, dir_o = _best_line(total_off)
-    prob_o = _poisson_over_prob(total_off, line_o) if dir_o == "over" else 1 - _poisson_over_prob(total_off, line_o + 1)
-    odds_o = real_odds.get(f"offsides_{'over' if dir_o=='over' else 'under'}_{line_o}", _fair_odds_with_margin(prob_o))
-    markets.append(Market(
-        key="offsides", market="Offsides",
-        bet=f"{'Más' if dir_o=='over' else 'Menos'} de {line_o:.1f} offsides",
-        our_prob=round(prob_o, 3), house_odds=odds_o,
-        ev=round(prob_o * odds_o - 1, 4),
-        description=f"Promedio combinado {total_off:.1f} offsides/partido. Prob. estimada: {prob_o*100:.0f}%.",
+    # Offsides (Poisson)
+    to = c["total_offsides"]
+    line_o, dir_o = _best_line(to)
+    prob_o = _poisson_prob(to, line_o, dir_o)
+    markets.append(_make_market(
+        key="offsides", market="Offsides", direction=dir_o, line=line_o,
+        value=to, unit="offsides", prob=prob_o,
+        odds_key=f"offsides_{dir_o}_{line_o}", real_odds=real_odds,
         bookmaker="Offsides · Total de offsides",
     ))
 
     return markets
 
 
+def _make_market(*, key, market, direction, line, value, unit,
+                 prob, odds_key, real_odds, bookmaker) -> Market:
+    """Construye un Market Over/Under unificando cuota real vs estimada."""
+    ro = real_odds.get(odds_key, 0.0)
+    verb = "Más" if direction == "over" else "Menos"
+    bet  = f"{verb} de {line:.1f} {unit}"
+    desc = (f"Promedio combinado {value:.1f} {unit}/partido. "
+            f"Prob. estimada: {prob*100:.0f}%.")
+    return Market(
+        key=key, market=market, bet=bet,
+        our_prob=round(prob, 3),
+        fair_odds=round(1 / max(prob, 0.01), 2),
+        house_odds=ro, has_real_odds=bool(ro),
+        # EV real si hay cuota; probabilidad como proxy de ranking si no
+        ev=round(prob * ro - 1, 4) if ro else round(prob, 4),
+        description=desc, bookmaker=bookmaker,
+    )
+
+
 # ── Formateo de salida ────────────────────────────────────────────────────────
 
-def _format(m: Market, level: str) -> dict:
-    ev_pct = f"{m.ev * 100:+.1f}%"
-    has_real_odds = True  # siempre tenemos cuota, real o estimada
+def _format(m: Market) -> dict:
+    has_real = m.has_real_odds
+    if has_real:
+        ev_str   = f"{m.ev * 100:+.1f}%"
+        has_value = m.ev > 0
+    else:
+        # Sin cuota real: EV es la probabilidad usada como ranking, no un porcentaje real
+        ev_str    = "N/D"
+        has_value = m.our_prob >= 0.60   # "valor" cuando prob propia > 60%
+
     return {
-        "market":         m.market,
-        "bet":            m.bet,
+        "market":          m.market,
+        "bet":             m.bet,
         "our_probability": f"{m.our_prob * 100:.0f}%",
-        "house_odds":     f"{m.house_odds:.2f}",
-        "expected_value": ev_pct,
-        "ev_raw":         m.ev,
-        "has_value":      m.ev > 0,
-        "description":    m.description,
-        "betano_market":  m.bookmaker,
-        # campos legacy para compatibilidad con el frontend actual
-        "confidence":     round(m.our_prob, 2),
-        "estimated_odds": f"{m.house_odds:.2f}",
+        "fair_odds":       f"{m.fair_odds:.2f}",
+        "house_odds":      f"{m.house_odds:.2f}" if m.has_real_odds else "—",
+        "expected_value":  ev_str,
+        "ev_raw":          m.ev if m.has_real_odds else None,
+        "has_value":       has_value,
+        "has_real_odds":   has_real,
+        "description":     m.description,
+        "betano_market":   m.bookmaker,
+        # compatibilidad con frontend
+        "confidence":      round(m.our_prob, 2),
+        "estimated_odds":  f"{m.fair_odds:.2f}",
     }
-
-
-def _ev_level(ev: float) -> str:
-    if ev >= 0.08:  return "safe"
-    if ev >= 0.03:  return "risky"
-    return "longshot"
 
 
 # ── Modelos probabilísticos ───────────────────────────────────────────────────
 
-def _poisson_over_prob(lam: float, line: float) -> float:
-    """
-    P(X > line) para distribución de Poisson con media `lam`.
-    Se usa para eventos de conteo (corners, goles, offsides).
-    """
-    k = int(math.floor(line))
-    # P(X <= k) = suma de P(X=i) para i=0..k
+def _poisson_prob(lam: float, line: float, direction: str) -> float:
+    """P(X > line) o P(X ≤ line) con distribución de Poisson(lam)."""
+    lam = max(lam, 0.01)
+    k   = int(math.floor(line))
     p_under = sum(
-        (math.exp(-lam) * lam**i) / math.factorial(i)
+        math.exp(-lam) * lam**i / math.factorial(i)
         for i in range(k + 1)
     )
-    return max(0.01, min(0.99, 1 - p_under))
+    p = (1 - p_under) if direction == "over" else p_under
+    return max(0.01, min(0.99, p))
 
 
 def _normal_prob(mean: float, std: float, line: float, direction: str) -> float:
-    """
-    P(X > line) o P(X < line+1) bajo distribución Normal(mean, std).
-    Se usa para tarjetas y faltas que tienen distribución más simétrica.
-    """
-    z = (line - mean) / std
-    # Aproximación de la CDF normal estándar
-    p_under = _normal_cdf(z)
-    if direction == "over":
-        return max(0.01, min(0.99, 1 - p_under))
-    else:
-        return max(0.01, min(0.99, p_under))
-
-
-def _normal_cdf(z: float) -> float:
-    """CDF de la distribución normal estándar (aproximación de Abramowitz & Stegun)."""
-    return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+    """P(X > line) o P(X ≤ line) con distribución Normal(mean, std)."""
+    std  = max(std, 0.01)
+    z    = (line - mean) / std
+    p_le = 0.5 * (1 + math.erf(z / math.sqrt(2)))
+    p    = (1 - p_le) if direction == "over" else p_le
+    return max(0.01, min(0.99, p))
 
 
 def _best_line(value: float) -> tuple[float, str]:
     """
-    Elige la línea .5 que maximiza el margen con dirección coherente.
-    Ej: valor=8.1 → Over 7.5 (margen 0.6)
+    Elige la línea .5 que maximiza el margen respecto al promedio.
+    Ej: valor=8.1 → Over 7.5 (margen=0.6) mejor que Under 8.5 (margen=0.4)
     """
-    floor_val   = math.floor(value)
-    line_over   = (floor_val - 1) + 0.5
-    line_under  = floor_val + 0.5
-    margin_over = value - line_over
-    margin_under= line_under - value
+    floor_val    = math.floor(value)
+    line_over    = (floor_val - 1) + 0.5   # Over esta línea
+    line_under   = floor_val + 0.5          # Under la siguiente
+    margin_over  = value - line_over
+    margin_under = line_under - value
     return (line_over, "over") if margin_over >= margin_under else (line_under, "under")
-
-
-def _fair_odds_with_margin(prob: float, margin: float = 0.08) -> float:
-    """
-    Cuota justa = 1/prob. Con margen de casa del 8% (margen típico de casas europeas).
-    Retorna la cuota que ofrecería la casa (siempre menor que la justa).
-    """
-    if prob <= 0:
-        return 99.0
-    fair = 1 / prob
-    # La casa descuenta el margen de la cuota
-    return round(fair * (1 - margin), 2)

@@ -225,12 +225,17 @@ async function loadMatches() {
     list.innerHTML = "";
 
     if (!matches.length) {
-      list.innerHTML = `<p style="color:var(--muted);font-family:var(--font-m);font-size:13px;">
-        No hay partidos hoy en las ligas configuradas.</p>`;
+      list.innerHTML = `<p style="color:var(--muted);font-family:var(--font-m);font-size:13px;">No hay partidos hoy en las ligas configuradas.</p>`;
       return;
     }
 
-    matches.forEach(match => {
+    // Ocultar partidos ya finalizados — solo mostramos los pendientes y en vivo
+    const active = matches.filter(m => !m.finished);
+    if (!active.length) {
+      list.innerHTML = `<p style="color:var(--muted);font-family:var(--font-m);font-size:13px;">No hay partidos pendientes hoy. Todos los partidos de hoy ya finalizaron.</p>`;
+      return;
+    }
+    active.forEach(match => {
       const el = document.createElement("div");
       el.className = "match-item" + (match.live ? " live-match" : "");
 
@@ -320,28 +325,6 @@ async function runAnalysisByFixture(fixtureId) {
   }
 }
 
-async function runDemo() {
-  clearError();
-  stopLiveRefresh();
-  setLoading("CARGANDO DEMO — BOCA VS RIVER...");
-  try {
-    const res = await fetch(`${API_BASE}/analyze/demo`);
-    if (!res.ok) throw new Error(`Error ${res.status}`);
-    const data = await res.json();
-    currentMatchData = { ...data, fixture_id: 0 };
-    stopLoading();
-    renderMatchHeader(data.match);
-    renderStats(data.home_stats, data.away_stats);
-    renderRecs(data.recommendations);
-    renderLineups({}, data.match.home, data.match.away);
-    renderEvents([]);
-    $("content-tabs").classList.add("visible", "animate-in");
-    $("btn-export-pdf").classList.add("visible");
-  } catch(e) {
-    stopLoading();
-    showError("¿Está corriendo el backend en localhost:8000? — " + e.message);
-  }
-}
 
 /* ── Render: cabecera del partido ────────────────────────────── */
 function renderMatchHeader(match) {
@@ -472,6 +455,9 @@ function renderRecs(recs) {
     const probNum  = parseFloat(probPct);
     const hasValue = rec.has_value ?? (rec.ev_raw > 0);
     const evColor  = hasValue ? "var(--green)" : "var(--red)";
+    const evLabel  = rec.has_real_odds === false
+      ? `<span style="color:var(--muted);font-size:10px;">Cuota justa: ${rec.fair_odds}</span>`
+      : rec.expected_value;
     const clr      = level === "safe" ? "green" : level === "risky" ? "yellow" : "red";
 
     grid.innerHTML += `
@@ -494,8 +480,8 @@ function renderRecs(recs) {
             <div class="meta-label">Cuota Bet365</div>
           </div>
           <div class="meta-item">
-            <div class="meta-val" style="color:${evColor}">${rec.expected_value}</div>
-            <div class="meta-label">EV</div>
+            <div class="meta-val" style="color:${evColor}">${evLabel}</div>
+            <div class="meta-label">${rec.has_real_odds ? "EV" : "Cuota justa"}</div>
           </div>
         </div>
         <div class="confidence-bar">
@@ -636,7 +622,7 @@ function exportPDF() {
       <td><strong>${rec.bet}</strong></td>
       <td style="text-align:center">${rec.our_probability ?? "—"}</td>
       <td style="text-align:center">${rec.house_odds ?? rec.estimated_odds ?? "—"}</td>
-      <td style="text-align:center;color:${rec.has_value?"#00e096":"#ff3d71"}">${rec.expected_value}</td>
+      <td style="text-align:center;color:${rec.has_value?"#00e096":"#ff3d71"}">${rec.has_real_odds ? rec.expected_value : "N/D"}</td>
     </tr>`;
   }).join("");
 
